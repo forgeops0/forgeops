@@ -1,0 +1,290 @@
+# Headless Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: patroni-forgeops-config
+  labels:
+    application: patroni
+    cluster-name: patroni-forgeops
+spec:
+  clusterIP: None
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: patroni-forgeops
+  labels:
+    application: patroni
+    cluster-name: patroni-forgeops
+spec:
+  replicas: 3
+  serviceName: patroni-forgeops
+  selector:
+    matchLabels:
+      application: patroni
+      cluster-name: patroni-forgeops
+  template:
+    metadata:
+      labels:
+        application: patroni
+        cluster-name: patroni-forgeops
+    spec:
+      serviceAccountName: patroni-forgeops
+      containers:
+      - name: patroni-forgeops
+        image: patroni:latest  # docker build -t patroni .
+        imagePullPolicy: IfNotPresent
+        readinessProbe:
+          httpGet:
+            scheme: HTTP
+            path: /readiness
+            port: 8008
+          initialDelaySeconds: 3
+          periodSeconds: 10
+          timeoutSeconds: 5
+          successThreshold: 1
+          failureThreshold: 3
+        ports:
+        - containerPort: 8008
+          protocol: TCP
+        - containerPort: 5432
+          protocol: TCP
+        volumeMounts:
+        - mountPath: /home/postgres/pgdata
+          name: pgdata
+        env:
+        - name: PATRONI_KUBERNETES_POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: PATRONI_KUBERNETES_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: PATRONI_KUBERNETES_BYPASS_API_SERVICE
+          value: 'true'
+        - name: PATRONI_KUBERNETES_USE_ENDPOINTS
+          value: 'true'
+        - name: PATRONI_KUBERNETES_LABELS
+          value: '{application: patroni, cluster-name: patroni-forgeops}'
+        - name: PATRONI_SUPERUSER_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: patroni-config-secret
+              key: superuser-username
+        - name: PATRONI_SUPERUSER_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: patroni-config-secret
+              key: superuser-password
+        - name: PATRONI_REPLICATION_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: patroni-config-secret
+              key: replication-username
+        - name: PATRONI_REPLICATION_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: patroni-config-secret
+              key: replication-password
+        - name: PATRONI_ADMIN_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: patroni-config-secret
+              key: admin-username
+        - name: PATRONI_ADMIN_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: patroni-config-secret
+              key: admin-password
+        - name: PATRONI_READONLY_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: patroni-config-secret
+              key: readonly-username
+        - name: PATRONI_READONLY_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: patroni-config-secret
+              key: readonly-password
+        - name: PATRONI_BACKUP_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: patroni-config-secret
+              key: backup-username
+        - name: PATRONI_BACKUP_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: patroni-config-secret
+              key: backup-password
+        - name: PATRONI_SCOPE
+          value: patroni-forgeops
+        - name: PATRONI_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: PATRONI_POSTGRESQL_DATA_DIR
+          value: /home/postgres/pgdata/pgroot/data
+        - name: PATRONI_POSTGRESQL_PGPASS
+          value: /tmp/pgpass
+        - name: PATRONI_POSTGRESQL_LISTEN
+          value: '0.0.0.0:5432'
+        - name: PATRONI_RESTAPI_LISTEN
+          value: '0.0.0.0:8008'
+      terminationGracePeriodSeconds: 0
+      volumes:
+      - name: pgdata
+        emptyDir: {}
+
+---
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: patroni-forgeops
+  labels:
+    application: patroni
+    cluster-name: patroni-forgeops
+subsets: []
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: patroni-forgeops
+  labels:
+    application: patroni
+    cluster-name: patroni-forgeops
+spec:
+  type: ClusterIP
+  ports:
+  - port: 5432
+    targetPort: 5432
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: patroni-forgeops-repl
+  labels:
+    application: patroni
+    cluster-name: patroni-forgeops
+    role: replica
+spec:
+  type: ClusterIP
+  selector:
+    application: patroni
+    cluster-name: patroni-forgeops
+    role: replica
+  ports:
+  - port: 5432
+    targetPort: 5432
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: patroni-config-secret
+  labels:
+    application: patroni
+    cluster-name: patroni-forgeops
+type: Opaque
+data: {}
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: patroni-forgeops
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: patroni-forgeops
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  verbs:
+  - create
+  - get
+  - list
+  - patch
+  - update
+  - watch
+  - delete
+  - deletecollection
+- apiGroups:
+  - ""
+  resources:
+  - endpoints
+  verbs:
+  - create
+  - get
+  - list
+  - patch
+  - update
+  - watch
+  - delete
+  - deletecollection
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - services
+  verbs:
+  - create
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: patroni-forgeops
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: patroni-forgeops
+subjects:
+- kind: ServiceAccount
+  name: patroni-forgeops
+  namespace: default
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: patroni-k8s-ep-access
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - endpoints
+  resourceNames:
+  - kubernetes
+  verbs:
+  - get
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: patroni-k8s-ep-access
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: patroni-k8s-ep-access
+subjects:
+- kind: ServiceAccount
+  name: patroni-forgeops
+  namespace: default
