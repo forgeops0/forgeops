@@ -1,32 +1,26 @@
 resource "proxmox_vm_qemu" "cloudinit-test" {
-    name = "terraform-test-vm"
-    desc = "A test for using terraform and cloudinit"
+    name = var.pm_vm_name
+    #desc = "A test for using terraform and cloudinit"
 
     # Node name has to be the same name as within the cluster
     # this might not include the FQDN
-    target_node = "admin"
+    target_node = var.pm_vm_target_node
 
     # The destination resource pool for the new VM
     #pool = "pool0"
 
     # The template name to clone this vm from
-    clone = "ubuntu-24.04-template"
+    clone = var.pm_vm_template
 
     # Activate QEMU agent for this VM
-    agent = 1
+    agent = var.pm_vm_enable_qemu_agent ? 1 : 0
 
     os_type = "cloud-init"
-    cores = 2
-    sockets = 1
-    vcpus = 0
-    #cpu_type = "host"
-    memory = 2048
-    scsihw = "lsi"
-
-    # Setup the disk
-    # cloudinit {
-    #     storage = "local-lvm"
-    # }
+    cores = var.pm_vm_cores
+    sockets = var.pm_vm_sockets
+    vcpus = var.pm_vm_vcpus
+    memory = var.pm_vm_memory
+    scsihw = var.pm_vm_scsihw
 
     disks {
         ide {
@@ -37,29 +31,24 @@ resource "proxmox_vm_qemu" "cloudinit-test" {
         virtio {
             virtio0 {
                 disk {
-                    size            = 32
-                    cache           = "writeback"
-                    storage         = "local-lvm"
-                    #storage_type    = "rbd"
-                    iothread        = true
-                    discard         = true
+                    size            = var.pm_vm_disk_size
+                    cache           = var.pm_vm_disk_cache
+                    storage         = var.pm_vm_disk_storage
+                    iothread        = var.pm_vm_disk_iothread
+                    discard         = var.pm_vm_disk_discard
                 }
             }
         }
     }
 
-    # Setup the network interface and assign a vlan tag: 256
     network {
-        #id = 0
-        model = "virtio"
-        bridge = "vmbr0"
-        tag = 256
+        model = var.pm_vm_network_model
+        bridge = var.pm_vm_network_bridge
+        tag = var.pm_vm_network_tag
     }
 
-    # Setup the ip address using cloud-init.
     boot = "order=virtio0"
-    # Keep in mind to use the CIDR notation for the ip.
-    ipconfig0 = "ip=192.168.88.190/24,gw=192.168.88.1"
+    ipconfig0 = var.pm_vm_ipconfig0
 
     sshkeys = <<EOF
     ${var.ssh_key}
