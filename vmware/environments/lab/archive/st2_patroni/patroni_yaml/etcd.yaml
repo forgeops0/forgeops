@@ -1,0 +1,84 @@
+# PersistentVolume dla etcd - przykład użycia hostPath (dostosuj do swojego środowiska)
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-etcd
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  hostPath:
+    path: /mnt/data/etcd # Lokalne miejsce na węźle (do użytku w środowiskach testowych)
+---
+# StatefulSet dla etcd
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: etcd-server
+spec:
+  serviceName: etcd-server
+  replicas: 1
+  selector:
+    matchLabels:
+      app: etcd
+  template:
+    metadata:
+      labels:
+        app: etcd
+    spec:
+      containers:
+      - name: etcd
+        image: quay.io/coreos/etcd:v3.4.15
+        env:
+        - name: ETCD_DATA_DIR
+          value: "/var/lib/etcd"
+        - name: ETCD_NAME
+          value: "etcd-server-0"
+        - name: ETCD_INITIAL_ADVERTISE_PEER_URLS
+          value: "http://etcd-server-0.etcd-server.default.svc.cluster.local:2380"
+        - name: ETCD_LISTEN_PEER_URLS
+          value: "http://0.0.0.0:2380"
+        - name: ETCD_LISTEN_CLIENT_URLS
+          value: "http://0.0.0.0:2379"
+        - name: ETCD_ADVERTISE_CLIENT_URLS
+          value: "http://etcd-server-0.etcd-server.default.svc.cluster.local:2379"
+        - name: ETCD_INITIAL_CLUSTER
+          value: "etcd-server-0=http://etcd-server-0.etcd-server.default.svc.cluster.local:2380"
+        - name: ETCD_INITIAL_CLUSTER_STATE
+          value: "new"
+        - name: ETCD_INITIAL_CLUSTER_TOKEN
+          value: "etcd-cluster"
+        ports:
+        - containerPort: 2379
+          name: client
+        - containerPort: 2380
+          name: peer
+        volumeMounts:
+        - mountPath: /var/lib/etcd
+          name: etcd-data
+  volumeClaimTemplates:
+  - metadata:
+      name: etcd-data
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 5Gi
+---
+# Headless Service dla etcd StatefulSet
+apiVersion: v1
+kind: Service
+metadata:
+  name: etcd-server
+spec:
+  clusterIP: None
+  ports:
+  - port: 2379
+    name: client
+  - port: 2380
+    name: peer
+  selector:
+    app: etcd

@@ -1,0 +1,14 @@
+{
+    "admin-password": "********",
+    "admin-username": "********",
+    "backup-password": "********",
+    "backup-username": "********",
+    "readonly-password": "********",
+    "readonly-username": "********",
+    "replication-password": "********",
+    "replication-username": "********",
+    "standby-password": "********",
+    "standby-username": "********",
+    "superuser-password": "********",
+    "superuser-username": "********"
+  }

@@ -1,0 +1,464 @@
+# ---
+# - hosts: masters
+#   become: yes
+#   tasks:
+#     - name: Install required packages
+#       apt:
+#         name:
+#           - apt-transport-https
+#           - ca-certificates
+#           - curl
+#           - software-properties-common
+#         state: present
+
+#     - name: Add Kubernetes APT repository
+#       apt_repository:
+#         repo: "deb https://pkgs.k8s.io/core:/stable:/v1.30/deb/ /"
+#         state: present
+#         filename: "k8s"
+
+#     - name: Install Kubernetes components
+#       apt:
+#         name:
+#           - kubelet
+#           - kubeadm
+#           - kubectl
+#         state: present
+
+#     - name: Initialize Kubernetes master node
+#       command: kubeadm init --pod-network-cidr=10.244.0.0/16
+#       register: kubeadm_init
+
+#     - name: Set up kubeconfig for the root user
+#       shell: "{{ item }}"
+#       with_items:
+#         - mkdir -p $HOME/.kube
+#         - cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+#         - chown $(id -u):$(id -g) $HOME/.kube/config
+
+# - hosts: workers
+#   become: yes
+#   tasks:
+#     - name: Join worker nodes to the cluster
+#       command: "{{ hostvars['masters']['kubeadm_init'].stdout_lines[-1] }}"
+
+# - name: Deploy PostgreSQL HA with Pgpool-II on Kubernetes
+#   hosts: localhost
+#   tasks:
+#     - name: Create PostgreSQL Namespace
+#       kubernetes.core.k8s:
+#         state: present
+#         definition:
+#           apiVersion: v1
+#           kind: Namespace
+#           metadata:
+#             name: postgres-ha
+
+#     - name: Create Secret for PostgreSQL Passwords
+#       kubernetes.core.k8s_secret:
+#         state: present
+#         namespace: postgres-ha
+#         definition:
+#           metadata:
+#             name: postgres-secret
+#           data:
+#             password: "{{ 'passw123' | b64encode }}"  # Use a secure method to manage passwords.
+
+#     - name: Create PostgreSQL Primary StatefulSet
+#       kubernetes.core.k8s:
+#         state: present
+#         namespace: postgres-ha
+#         definition:
+#           apiVersion: apps/v1
+#           kind: StatefulSet
+#           metadata:
+#             name: postgres-primary
+#           spec:
+#             serviceName: postgres-primary
+#             replicas: 1
+#             selector:
+#               matchLabels:
+#                 app: postgres-primary
+#             template:
+#               metadata:
+#                 labels:
+#                   app: postgres-primary
+#               spec:
+#                 containers:
+#                   - name: postgres
+#                     image: postgres:latest
+#                     env:
+#                       - name: POSTGRES_USER
+#                         value: "postgres"
+#                       - name: POSTGRES_PASSWORD
+#                         valueFrom:
+#                           secretKeyRef:
+#                             name: postgres-secret
+#                             key: password
+#                     ports:
+#                       - containerPort: 5432
+
+#     - name: Create PostgreSQL Read Replica StatefulSet
+#       kubernetes.core.k8s:
+#         state: present
+#         namespace: postgres-ha
+#         definition:
+#           apiVersion: apps/v1
+#           kind: StatefulSet
+#           metadata:
+#             name: postgres-replica
+#           spec:
+#             serviceName: postgres-replica
+#             replicas: 2  # Number of read replicas; adjust as needed.
+#             selector:
+#               matchLabels:
+#                 app: postgres-replica
+#             template:
+#               metadata:
+#                 labels:
+#                   app: postgres-replica
+#               spec:
+#                 containers:
+#                   - name: postgres-replica
+#                     image: postgres:latest
+#                     env:
+#                       - name: POSTGRES_USER
+#                         value: "postgres"
+#                       - name: POSTGRES_PASSWORD
+#                         valueFrom:
+#                           secretKeyRef:
+#                             name: postgres-secret
+#                             key: password
+#                       - name: POSTGRES_HOST_AUTH_METHOD
+#                         value: "trust"  # For simplicity; adjust for production use.
+#                     ports:
+#                       - containerPort: 5432
+
+#     - name: Create Pgpool-II Deployment
+#       kubernetes.core.k8s:
+#         state: present
+#         namespace: postgres-ha
+#         definition:
+#           apiVersion: apps/v1
+#           kind: Deployment
+#           metadata:
+#             name: pgpool
+#           spec:
+#             replicas: 1  # Single Pgpool instance for load balancing.
+#             selector:
+#               matchLabels:
+#                 app: pgpool
+#             template:
+#               metadata:
+#                 labels:
+#                   app: pgpool
+#               spec:
+#                 containers:
+#                   - name: pgpool
+#                     image: pgpool/pgpool-II:v4.2.3  # Adjust version as necessary.
+#                     env:
+#                       - name: PGPOOL_BACKEND_NODES
+#                         value: "0:<POSTGRES_PRIMARY_SERVICE>:5432,1:<POSTGRES_REPLICA_SERVICE>:5432"  # Replace with actual service names.
+#                       - name: PGPOOL_LOAD_BALANCE_MODE
+#                         value: "on"
+#                       - name: PGPOOL_ENABLE_POOL_HBA
+#                         value: "on"
+#                     ports:
+#                       - containerPort: 5432
+
+#     - name: Expose Pgpool Service
+#       kubernetes.core.k8s:
+#         state: present
+#         namespace: postgres-ha
+#         definition:
+#           apiVersion: v1
+#           kind: Service
+#           metadata:
+#             name: pgpool-service
+#           spec:
+#             type: ClusterIP  # Change to LoadBalancer if external access is needed.
+#             ports:
+#               - port: 5432
+#                 targetPort: 5432
+#             selector:
+#               app: pgpool
+
+#     - name: Expose PostgreSQL Primary Service
+#       kubernetes.core.k8s:
+#         state: present
+#         namespace: postgres-ha
+#         definition:
+#           apiVersion: v1
+#           kind: Service
+#           metadata:
+#             name: postgres-primary
+#           spec:
+#             ports:
+#               - port: 5432
+#                 targetPort: 5432
+#             selector:
+#               app: postgres-primary
+
+#     - name: Expose PostgreSQL Replica Service
+#       kubernetes.core.k8s:
+#         state: present
+#         namespace: postgres-ha
+#         definition:
+#           apiVersion: v1
+#           kind: Service
+#           metadata:
+#             name: postgres-replica
+#           spec:
+#             ports:
+#               - port: 5432
+#                 targetPort: 5432
+#             selector:
+#               app: postgres-replica
+
+
+
+- hosts: masters
+  become: yes
+  tasks:
+    - name: Install required packages on master nodes
+      apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - software-properties-common
+        state: present
+
+    - name: Add Kubernetes APT repository on master nodes
+      apt_repository:
+        repo: "deb https://pkgs.k8s.io/core:/stable:/v1.30/deb/ /"
+        state: present
+        filename: "k8s"
+
+    - name: Install Kubernetes components on master nodes
+      apt:
+        name:
+          - kubelet
+          - kubeadm
+          - kubectl
+        state: present
+
+    - name: Initialize Kubernetes master node
+      command: kubeadm init --pod-network-cidr=10.244.0.0/16
+      register: kubeadm_init
+
+    - name: Set up kubeconfig for the root user
+      shell: "{{ item }}"
+      with_items:
+        - mkdir -p $HOME/.kube
+        - cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+        - chown $(id -u):$(id -g) $HOME/.kube/config
+
+    - name: Deploy PostgreSQL HA with Pgpool-II on Kubernetes
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: postgres-ha
+
+    - name: Create Secret for PostgreSQL Passwords
+      kubernetes.core.k8s:
+        state: present
+        namespace: postgres-ha
+        definition:
+          metadata:
+            name: postgres-secret
+          data:
+            password: "{{ 'passw123' | b64encode }}"  # Use a secure method to manage passwords.
+    - name: Create a secret in Kubernetes
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: my-secret
+          type: Opaque
+          data:
+            password: "{{ db_password | b64encode }}"
+
+    - name: Create PostgreSQL Primary StatefulSet
+      kubernetes.core.k8s:
+        state: present
+        namespace: postgres-ha
+        definition:
+          apiVersion: apps/v1
+          kind: StatefulSet
+          metadata:
+            name: postgres-primary
+          spec:
+            serviceName: postgres-primary
+            replicas: 1
+            selector:
+              matchLabels:
+                app: postgres-primary
+            template:
+              metadata:
+                labels:
+                  app: postgres-primary
+              spec:
+                containers:
+                  - name: postgres
+                    image: postgres:latest
+                    env:
+                      - name: POSTGRES_USER
+                        value: "postgres"
+                      - name: POSTGRES_PASSWORD
+                        valueFrom:
+                          secretKeyRef:
+                            name: postgres-secret
+                            key: password
+                    ports:
+                      - containerPort: 5432
+
+    - name: Create PostgreSQL Read Replica StatefulSet
+      kubernetes.core.k8s:
+        state: present
+        namespace: postgres-ha
+        definition:
+          apiVersion: apps/v1
+          kind: StatefulSet
+          metadata:
+            name: postgres-replica
+          spec:
+            serviceName: postgres-replica
+            replicas: 2  # Number of read replicas; adjust as needed.
+            selector:
+              matchLabels:
+                app: postgres-replica
+            template:
+              metadata:
+                labels:
+                  app: postgres-replica
+              spec:
+                containers:
+                  - name: postgres-replica
+                    image: postgres:latest
+                    env:
+                      - name: POSTGRES_USER
+                        value: "postgres"
+                      - name: POSTGRES_PASSWORD
+                        valueFrom:
+                          secretKeyRef:
+                            name: postgres-secret
+                            key: password
+                      - name: POSTGRES_HOST_AUTH_METHOD
+                        value: "trust"  # For simplicity; adjust for production use.
+                    ports:
+                      - containerPort: 5432
+
+    - name: Create Pgpool-II Deployment
+      kubernetes.core.k8s:
+        state: present
+        namespace: postgres-ha
+        definition:
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: pgpool
+          spec:
+            replicas: 1  # Single Pgpool instance for load balancing.
+            selector:
+              matchLabels:
+                app: pgpool
+            template:
+              metadata:
+                labels:
+                  app: pgpool
+              spec:
+                containers:
+                  - name: pgpool
+                    image: pgpool/pgpool-II:v4.2.3  # Adjust version as necessary.
+                    env:
+                      - name: PGPOOL_BACKEND_NODES
+                        value: "0:<POSTGRES_PRIMARY_SERVICE>:5432,1:<POSTGRES_REPLICA_SERVICE>:5432"  # Replace with actual service names.
+                      - name: PGPOOL_LOAD_BALANCE_MODE
+                        value: "on"
+                      - name: PGPOOL_ENABLE_POOL_HBA
+                        value: "on"
+                    ports:
+                      - containerPort: 5432
+
+    - name: Expose Pgpool Service
+      kubernetes.core.k8s:
+        state: present
+        namespace: postgres-ha
+        definition:
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: pgpool-service
+          spec:
+            type: ClusterIP  # Change to LoadBalancer if external access is needed.
+            ports:
+              - port: 5432
+                targetPort: 5432
+            selector:
+              app: pgpool
+
+    - name: Expose PostgreSQL Primary Service
+      kubernetes.core.k8s:
+        state: present
+        namespace: postgres-ha
+        definition:
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: postgres-primary
+          spec:
+            ports:
+              - port: 5432
+                targetPort: 5432
+            selector:
+              app: postgres-primary
+
+    - name: Expose PostgreSQL Replica Service
+      kubernetes.core.k8s:
+        state: present
+        namespace: postgres-ha
+        definition:
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: postgres-replica
+          spec:
+            ports:
+              - port: 5432
+                targetPort: 5432
+            selector:
+              app: postgres-replica
+
+- hosts: workers
+  become: yes
+  tasks:
+    - name: Install required packages on worker nodes
+      apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - software-properties-common
+        state: present
+
+    - name: Add Kubernetes APT repository on worker nodes
+      apt_repository:
+        repo: "deb https://pkgs.k8s.io/core:/stable:/v1.30/deb/ /"
+        state: present
+        filename: "k8s"
+
+    - name: Install Kubernetes components on worker nodes
+      apt:
+        name:
+          - kubelet
+          - kubeadm
+        state: present
+
+    - name: Join worker nodes to the cluster
+      command: "{{ hostvars['masters']['kubeadm_init'].stdout_lines[-1] }}"

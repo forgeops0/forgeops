@@ -1,0 +1,24 @@
+# Ignore Terraform files
+
+# Terraform state files
+*.tfstate
+*.tfstate.*
+
+# Crash log file
+crash.log
+
+# Terraform variable files
+*.tfvars
+*.tfvars.json
+
+# Local Terraform dependencies
+.terraform/
+.terraform.lock.hcl
+
+# Terraform plan files
+terraform.tfplan
+*.tfplan
+
+# Logs and backup files
+*.log
+*.backup

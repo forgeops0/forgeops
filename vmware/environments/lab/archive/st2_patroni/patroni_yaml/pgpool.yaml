@@ -1,0 +1,121 @@
+# Namespace for Pgpool
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: pgpool
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: patroni-forgeops
+  namespace: everest
+  labels:
+    application: patroni
+    cluster-name: patroni-forgeops
+type: Opaque
+data:
+  superuser-password: cUhpYVM1fF9IQEZGTk1GRGtRQl1DckN3         
+  replication-password: cUhpYVM1fF9IQEZGTk1GRGtRQl1DckN3      
+---
+# Pgpool Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pgpool
+  namespace: everest
+  labels:
+    app: pgpool
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pgpool
+  template:
+    metadata:
+      labels:
+        app: pgpool
+    spec:
+      containers:
+        - name: pgpool
+          image: pgpool/pgpool
+          env:
+            - name: PGPOOL_PARAMS_BACKEND_HOSTNAME0
+              value: "postgresql-hgr-primary.everest.svc.cluster.local" # pierwszy węzeł Patroni
+            - name: PGPOOL_PARAMS_BACKEND_PORT0
+              value: "5432"
+            - name: PGPOOL_PARAMS_BACKEND_WEIGHT0
+              value: "1"
+            - name: PGPOOL_PARAMS_BACKEND_FLAG0
+              value: "DISALLOW_TO_FAILOVER"
+            - name: PGPOOL_PARAMS_BACKEND_HOSTNAME1
+              value: "postgresql-hgr-replicas.everest.svc.cluster.local" # drugi węzeł Patroni
+            - name: PGPOOL_PARAMS_BACKEND_PORT1
+              value: "5432"
+            - name: PGPOOL_PARAMS_BACKEND_WEIGHT1
+              value: "2"
+            - name: PGPOOL_PARAMS_BACKEND_FLAG1
+              value: "DISALLOW_TO_FAILOVER"
+
+            # Ustawienie dla balansowania ruchu SELECT
+            - name: PGPOOL_PARAMS_LOAD_BALANCE_MODE
+              value: "on" # Włączenie balansowania zapytań odczytowych (SELECT)
+              
+            # Wyłączenie failovera, bo zajmuje się nim etcd/Patroni
+            - name: PGPOOL_PARAMS_FAILOVER_ON_BACKEND_ERROR
+              value: "off"
+
+            # Dodatkowe ustawienia
+            - name: PGPOOL_PARAMS_ENABLE_POOL_HBA
+              value: "on"
+            - name: PGPOOL_PARAMS_SSL
+              value: "on"
+            - name: POSTGRES_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: patroni-forgeops
+                  key: superuser-password
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: patroni-forgeops
+                  key: replication-password
+            - name: PGPOOL_PASSWORD_ENCRYPTION_METHOD
+              value: "scram-sha-256"
+            - name: PGPOOL_ENABLE_POOL_PASSWD
+              value: "true"
+            - name: PGPOOL_SKIP_PASSWORD_ENCRYPTION
+              value: "false"
+          ports:
+            - containerPort: 9999
+          # Uncomment the following to enable custom TLS
+          #volumeMounts:
+          #  - name: pgpool-tls
+          #    mountPath: /config/tls
+      # Uncomment the following to enable custom TLS
+      #volumes:
+      #  - name: pgpool-tls
+      #    secret:
+      #      secretName: pgpool-tls
+
+---
+
+# Pgpool Service
+# Pgpool Service z NodePort
+apiVersion: v1
+kind: Service
+metadata:
+  name: pgpool
+  namespace: everest
+  labels:
+    app: pgpool
+spec:
+  selector:
+    app: pgpool
+  ports:
+    - name: pgpool-port
+      protocol: TCP
+      port: 9999
+      targetPort: 9999
+      nodePort: 30099  # Ustalony port dla dostępu zewnętrznego
+  type: NodePort
