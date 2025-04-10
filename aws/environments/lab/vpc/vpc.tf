@@ -1,11 +1,3 @@
-locals {
-  global_tags = {
-    Env     = var.global_vars.env
-    Project = var.global_vars.project
-    Owner   = var.global_vars.owner
-  }
-}
-
 resource "aws_vpc" "lab_vpc" {
   cidr_block           = var.cidr_block_vpc
   enable_dns_support   = true
