@@ -9,24 +9,15 @@ resource "aws_vpc" "lab_vpc" {
   )
 }
 
-resource "aws_subnet" "lab_sub_private_a" {
+resource "aws_subnet" "lab_private" {
+  for_each = var.private_subnets
+
   vpc_id            = aws_vpc.lab_vpc.id
-  cidr_block        = var.private_subnet_cidrs[0]
-  availability_zone = var.private_subnet_azs[0]
+  cidr_block        = each.value.cidr
+  availability_zone = each.value.az
 
-  tags = merge(
-    { Name = "${var.global_vars.env}-${var.subnet_names[0]}" },
-    local.global_tags
-  )
-}
-
-resource "aws_subnet" "lab_sub_private_b" {
-  vpc_id            = aws_vpc.lab_vpc.id
-  cidr_block        = var.private_subnet_cidrs[1]
-  availability_zone = var.private_subnet_azs[1]
-
-  tags = merge(
-    { Name = "${var.global_vars.env}-${var.subnet_names[1]}" },
-    local.global_tags
-  )
+tags = merge(
+  { Name = "${var.global_vars.env}-${var.global_vars.project}-${each.key}" },
+  local.global_tags
+)
 }
