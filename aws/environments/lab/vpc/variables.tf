@@ -1,5 +1,4 @@
 variable "global_vars" {
-  description = "Global variables for environment/project/owner"
   type = object({
     env     = string
     project = string
@@ -7,32 +6,51 @@ variable "global_vars" {
   })
 }
 
-# variable "subnet_names" {
-#   type        = list(string)
-#   description = "List of subnet name suffixes (for tagging and naming)"
-# }
+variable "cidr_block_vpc" {
+  type = string
+}
 
 variable "enable_dns_support" {
-  type        = bool
-  description = "Enable DNS support in the VPC"
-  default     = true
+  type    = bool
+  default = true
 }
 
 variable "enable_dns_hostnames" {
-  type        = bool
-  description = "Enable DNS hostnames in the VPC"
-  default     = true
+  type    = bool
+  default = true
 }
 
-variable "private_subnets" {
-  description = "Map of private subnet definitions: name => { cidr, az }"
+variable "create_public_subnets" {
+  type    = bool
+  default = true
+}
+
+variable "create_nat_instance" {
+  type    = bool
+  default = true
+}
+
+variable "public_subnets" {
   type = map(object({
     cidr = string
     az   = string
   }))
 }
 
-variable "cidr_block_vpc" {
-    description = "value of the VPC CIDR block"
-    type = string
+variable "private_subnets" {
+  type = map(object({
+    cidr = string
+    az   = string
+  }))
+}
+
+variable "nat_instance_config" {
+  type = object({
+    ami           = string
+    instance_type = string
+    private_ip    = string
+    key_name      = string
+    volume_size   = number
+    volume_type   = string
+  })
 }

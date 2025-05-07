@@ -1,5 +1,5 @@
 terraform {
-  required_version = ">= 1.4.0"
+  required_version = ">= 1.11.0"
 
   required_providers {
     aws = {
@@ -10,7 +10,7 @@ terraform {
 
   backend "s3" {
     bucket         = "spaceops-terraform-state"
-    key            = "aws/environments/lab/vpc/terraform.tfstate"
+    key            = "aws/environments/tools/vpc/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true
     dynamodb_table = "terraform-locks"

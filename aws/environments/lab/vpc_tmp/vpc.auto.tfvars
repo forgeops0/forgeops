@@ -1,3 +1,7 @@
+// ---------------------------
+// File: vpc.auto.tfvars
+// ---------------------------
+
 global_vars = {
   env     = "lab"
   project = "spaceops"
@@ -11,10 +15,10 @@ create_public_subnets = true
 create_nat_instance   = true
 
 nat_instance_config = {
-  ami           = "ami-0dd574ef87b79ac6c"
-  instance_type = "t3.micro"
+  ami           = "ami-09ebacdc178ae24c4"
+  instance_type = "t4g.nano"
   private_ip    = "172.17.1.10"
-  key_name      = "lab-spaceops"
+  key_name      = "YOUR_KEY_NAME"
   volume_size   = 8
   volume_type   = "gp3"
 }
